@@ -7,7 +7,9 @@ from random import choice
 
 NUM_OF_SIMULATIONS = 3
 C = 1.4
+MAX_ROLLOUT_DEPTH = 3
 valid_actions_getter = None
+sim_services = None
 
 
 # class State(object):
@@ -22,7 +24,7 @@ valid_actions_getter = None
 
 class Node(object):
 
-    def __init__(self, str_state, parent):
+    def __init__(self, str_state, parent, valid_actions=None, applied_action=None):
         """
         Constructor.
         :param str_state: string pddl representation of the state.
@@ -30,7 +32,9 @@ class Node(object):
         """
         self._state = str_state
         self._parent = parent
-        self._children = []
+        self._children = None
+        self._valid_actions = valid_actions
+        self._applied_action = applied_action
         self._visit_count = 0
         self._win_score = 0
 
@@ -41,25 +45,63 @@ class Node(object):
         return self._parent
 
     def get_children(self):
+
+        # Check if the current state tried to create any children.
+        if self._children is None:
+            self._children = []
+
+            # Create a child for every available action.
+            for action in self.get_valid_actions():
+
+                # The state on which the action will be applied.
+                state = self._state
+                # TODO maybe there is a need for try except here
+                # Apply the action on the state.
+                sim_services.parser.apply_action_to_state(action, state)
+                self._children.append(Node(state, self, applied_action=action))
+
         return self._children
 
     def get_visit_count(self):
         return self._visit_count
 
+    def increase_visit_count(self):
+        self._visit_count += 1
+
+    def add_win_score(self, score):
+        self._win_score += score
+
     def get_win_score(self):
         return self._win_score
 
-    def get_all_possible_states(self):
-        # TODO to understand how to use it, watch the tutorial of the algorithm
-        pass
+    # def get_all_possible_states(self):
+    #     pass
+
+    def get_valid_actions(self):
+
+        if self._valid_actions is None:
+            self._valid_actions = valid_actions_getter.get(self._state)
+
+        return self._valid_actions
+
+    def get_applied_action(self):
+        return self._applied_action
 
 
-def monte_carlo_tree_search(root):
+def init_helper_objects(services):
+    global valid_actions_getter, sim_services
+    sim_services = services
+    valid_actions_getter = PythonValidActions(sim_services.parser, sim_services.perception)
+
+
+def monte_carlo_tree_search(pddl_state, valid_actions):
+
+    root = Node(pddl_state, None, valid_actions=valid_actions)
 
     for i in xrange(NUM_OF_SIMULATIONS):
         leaf = traverse(root) # leaf = unvisited node
         simulation_result = rollout(leaf)
-        backpropagate(leaf, simulation_result)
+        back_propagate(leaf, simulation_result)
 
     return best_child(root)
 
@@ -112,15 +154,23 @@ def pick_unvisited(node):
 
 def rollout(node):
 
-    while non_terminal(node):
+    curr_depth = 0
+    while non_terminal(node) and curr_depth < MAX_ROLLOUT_DEPTH:
         node = rollout_policy(node)
+        curr_depth += 1
 
-    return result(node)
+    return get_result(node)
 
 
 def non_terminal(node):
-    # TODO implement, need to consider both available children and the max depth I want to check
-    pass
+    # TODO implement the line below
+    # if reached one of the goal states:
+    #     return True
+
+    if len(node.get_valid_actions()) == 0:
+        return True
+
+    return False
 
 
 def rollout_policy(node):
@@ -128,28 +178,33 @@ def rollout_policy(node):
     return choice(node.children)
 
 
-def result(node):
-    # TODO implement, need to consider both available children and the max depth I want to check
-    pass
+def get_result(node):
+    # TODO implement the line below
+    # TODO maybe if stopped because reached max depth return x and if got to dead end return y?
+    # if reached one of the goal states:
+    #     return 1
+    return 0
 
 
-def backpropagate(node, result):
+def back_propagate(node, result):
 
     # Check if node is root.
     if node.get_parent() is None:
         return
 
-    node.stats = update_stats(node, result)
-    backpropagate(node.parent)
+    update_stats(node, result)
+    back_propagate(node.parent, result)
 
 
 def update_stats(node, result):
-    # TODO implement, need to consider both available children and the max depth I want to check
-    pass
+    node.increase_visit_count()
+    node.add_win_score(result)
 
 
 def best_child(node):
 
     # Pick the child with the highest number of visits.
     visit_count_list = [child.get_visit_count() for child in node.get_children()]
-    return node.get_children()[np.argmax(visit_count_list)]
+    child = node.get_children()[np.argmax(visit_count_list)]
+
+    return child.get_applied_action()
