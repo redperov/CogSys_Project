@@ -23,7 +23,7 @@ class MyExecutor(Executor):
         self.services = services
 
         # Initialize helper objects for the MCTS algorithm.
-        init_helper_objects(services)
+        init_helper_objects(services, simulations_max_tries, max_simulation_depth, action_max_tries)
 
     def next_action(self):
 
@@ -63,4 +63,11 @@ if __name__ == '__main__':
     domain_path = sys.argv[1]
     problem_path = sys.argv[2]
 
-    print LocalSimulator(local).run(domain_path, problem_path, MyExecutor())
+    # Initializing parameters.
+    simulations_max_tries = 3
+    max_simulation_depth = 3
+    action_max_tries = 2
+
+    executor = MyExecutor(simulations_max_tries, max_simulation_depth, action_max_tries)
+
+    print LocalSimulator(local).run(domain_path, problem_path, executor)

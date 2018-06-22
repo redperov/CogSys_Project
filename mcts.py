@@ -10,6 +10,9 @@ C = 1.4
 MAX_ROLLOUT_DEPTH = 3
 valid_actions_getter = None
 sim_services = None
+sim_simulations_max_tries = 0
+sim_max_simulation_depth = 0
+sim_action_max_tries = 0
 
 
 # class State(object):
@@ -55,10 +58,25 @@ class Node(object):
 
                 # The state on which the action will be applied.
                 state = self._state
+
+                # Used for checking whether the action succeeded.
+                prev_state = self._state
+
+                # Counts the number of times an action failed.
+                counter = 0
+
                 # TODO maybe there is a need for try except here
-                # Apply the action on the state.
-                sim_services.parser.apply_action_to_state(action, state)
-                self._children.append(Node(state, self, applied_action=action))
+                while counter < sim_action_max_tries:
+
+                    # Apply the action on the state.
+                    sim_services.parser.apply_action_to_state(action, state)
+                    self._children.append(Node(state, self, applied_action=action))
+                    counter += 1
+
+                    # Check if the state has changed.
+                    # TODO comparison might not be working
+                    if state != prev_state:
+                        break
 
         return self._children
 
@@ -88,10 +106,13 @@ class Node(object):
         return self._applied_action
 
 
-def init_helper_objects(services):
-    global valid_actions_getter, sim_services
+def init_helper_objects(services, simulations_max_tries, max_simulation_depth, action_max_tries):
+    global valid_actions_getter, sim_services, sim_simulations_max_tries, sim_max_simulation_depth, sim_action_max_tries
     sim_services = services
     valid_actions_getter = PythonValidActions(sim_services.parser, sim_services.perception)
+    sim_simulations_max_tries = simulations_max_tries
+    sim_max_simulation_depth = max_simulation_depth
+    sim_action_max_tries = action_max_tries
 
 
 def monte_carlo_tree_search(pddl_state, valid_actions):
@@ -99,7 +120,7 @@ def monte_carlo_tree_search(pddl_state, valid_actions):
     root = Node(pddl_state, None, valid_actions=valid_actions)
 
     for i in xrange(NUM_OF_SIMULATIONS):
-        leaf = traverse(root) # leaf = unvisited node
+        leaf = traverse(root)  # leaf = unvisited node
         simulation_result = rollout(leaf)
         back_propagate(leaf, simulation_result)
 
@@ -108,8 +129,11 @@ def monte_carlo_tree_search(pddl_state, valid_actions):
 
 def traverse(node):
 
-    while fully_expanded(node):
+    depth = 0
+
+    while fully_expanded(node) and depth < sim_max_simulation_depth:
         node = best_uct(node)
+        depth += 1
 
     return pick_unvisited(node.get_children()) or node  # in case no children are present / node is terminal
 
