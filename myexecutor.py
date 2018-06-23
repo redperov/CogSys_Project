@@ -19,11 +19,14 @@ class MyExecutor(Executor):
         self._action_max_tries = action_max_tries
         self._action_retry_counter = 0
 
+        # TODO maybe change to a numpy array to increase the speed.
+        self._black_list = []
+
     def initialize(self, services):
         self.services = services
 
         # Initialize helper objects for the MCTS algorithm.
-        init_helper_objects(services, simulations_max_tries, max_simulation_depth, action_max_tries)
+        init_helper_objects(services, simulations_max_tries, max_simulation_depth, action_max_tries, self._black_list)
 
     def next_action(self):
 
@@ -38,17 +41,26 @@ class MyExecutor(Executor):
         if len(valid_actions) == 0:
             return None
 
+        # Get the current state.
+        curr_state = self.services.perception.get_state()
+
+        # Check if the current state already appears in the black list.
+        if curr_state not in self._black_list:
+
+            # Add the current state to the black list.
+            self._black_list.append(curr_state)
+
         # Check if there is only one valid action.
         if len(valid_actions) == 1:
             return valid_actions[0]
 
-        # Get the current state.
-        curr_state = self.services.perception.get_state()
-
+        # Check if the previous action failed, if it did, check if it can be retried.
         if curr_state == self._prev_action and self._action_retry_counter < self._action_max_tries:
             self._action_retry_counter += 1
             return self._prev_action
 
+        # Use the MCTS algorithm to choose an action.
+        # TODO looks like the UCT encounters division by zero, fix it
         action = monte_carlo_tree_search(curr_state, valid_actions)
 
         self._prev_action = action
