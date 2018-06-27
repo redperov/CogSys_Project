@@ -84,7 +84,6 @@ class Node(object):
 
                         # Check if the state is not in the black list.
                         if state not in sim_black_list:
-
                             # Add the new state to the list.
                             self._children.append(Node(state, self, applied_action=action))
 
@@ -129,7 +128,6 @@ def init_helper_objects(services, simulations_max_tries, max_simulation_depth, a
 
 
 def monte_carlo_tree_search(pddl_state, valid_actions):
-
     root = Node(pddl_state, None, valid_actions=valid_actions)
 
     for i in xrange(NUM_OF_SIMULATIONS):
@@ -137,15 +135,13 @@ def monte_carlo_tree_search(pddl_state, valid_actions):
         simulation_result = rollout(leaf)
         back_propagate(leaf, simulation_result)
 
-    # Get the best child.
-    child = best_child(root)
+    # Get the best action.
+    action = best_action(root)
 
-    # Return the action which brought to him.
-    return child.get_applied_action()
+    return action
 
 
 def traverse(node):
-
     depth = 0
 
     while fully_expanded(node) and depth < sim_max_simulation_depth:
@@ -175,16 +171,21 @@ def fully_expanded(node):
 
 def best_uct(node):
 
+    # If there is a child with a num of visits which is 0, its UCT equals infinity, so it's the best child to choose.
+    for c in node.get_children():
+        if c.get_visit_count == 0:
+            return c
+
+    # TODO maybe avoid doing two separate loops, and combine them to one for better performance speed
     choices_weights = [
-        (c.get_win_score() / (c.get_win_score())) + C * np.sqrt((2 * np.log(node.get_win_score()) /
-                                                                 (c.get_win_score())))
+        (c.get_win_score() / (c.get_visit_count())) + C * np.sqrt((2 * np.log(node.get_visit_count()) /
+                                                                   (c.get_visit_count())))
         for c in node.get_children()]
 
     return node.get_children()[np.argmax(choices_weights)]
 
 
 def pick_unvisited(children):
-
     # TODO if using numpy array, change to .size()
     if len(children) == 0:
         return None
@@ -197,7 +198,6 @@ def pick_unvisited(children):
 
 
 def rollout(node):
-
     curr_depth = 0
 
     while not is_terminal(node) and curr_depth < MAX_ROLLOUT_DEPTH:
@@ -208,7 +208,6 @@ def rollout(node):
 
 
 def is_terminal(node):
-
     # Check if reached one of the goals.
     if is_reached_a_goal_state(node.get_state()):
         return True
@@ -221,7 +220,6 @@ def is_terminal(node):
 
 
 def is_reached_a_goal_state(state):
-
     # Get all the uncompleted goals.
     goals = sim_services.goal_tracking.uncompleted_goals
 
@@ -238,7 +236,6 @@ def is_reached_a_goal_state(state):
 
 
 def rollout_policy(node):
-
     return choice(node.get_children())
 
 
@@ -258,26 +255,44 @@ def get_result(node):
 
 def back_propagate(node, result):
 
-    # Check if node is root.
-    if node.get_parent() is None:
-        return
-
-    # Update node's statistics.
-    update_stats(node, result)
-
-    # Continue back propagating.
-    back_propagate(node.get_parent(), result)
-
-
-def update_stats(node, result):
+    # Update statistics.
     node.increase_visit_count()
     node.add_win_score(result)
 
+    # Check if the node is not a root.
+    if node.get_parent():
 
-def best_child(node):
+        # Continue back propagating.
+        # TODO maybe avoid doing recursion.
+        back_propagate(node.get_parent(), result)
+
+    # # Check if node is root.
+    # if node.get_parent() is None:
+    #     return
+    #
+    # # Update node's statistics.
+    # update_stats(node, result)
+    #
+    # # Continue back propagating.
+    # back_propagate(node.get_parent(), result)
+
+
+# def update_stats(node, result):
+#     node.increase_visit_count()
+#     node.add_win_score(result)
+
+
+def best_action(node):
+
+    children = node.get_children()
+
+    # TODO check if it's possible for the root to not have any children
+    if len(children) == 0:
+        return None
 
     # Pick the child with the highest number of visits.
     visit_count_list = [child.get_visit_count() for child in node.get_children()]
     child = node.get_children()[np.argmax(visit_count_list)]
 
-    return child
+    # Return the action which brought to him.
+    return child.get_applied_action()
